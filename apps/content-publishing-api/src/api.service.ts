@@ -120,6 +120,62 @@ export class ApiService {
     return { referenceId: data.id };
   }
 
+  public async enqueueBatchRequestWithFile(file: Express.Multer.File, schemaId: number): Promise<AnnouncementResponseDto> {
+    // Calculate IPFS CID and DSNP multihash for the file
+    const [ipfsCid, dsnpMultiHash] = await Promise.all([
+      calculateIpfsCID(file.buffer),
+      calculateDsnpMultiHash(file.buffer),
+    ]);
+
+    // Cache the file data and metadata in Redis
+    const dataTransaction = this.redis.multi();
+    const metadataTransaction = this.redis.multi();
+
+    dataTransaction.setex(
+      getAssetDataKey(ipfsCid),
+      STORAGE_EXPIRE_UPPER_LIMIT_SECONDS,
+      file.buffer,
+    );
+
+    const assetCache: IAssetMetadata = {
+      ipfsCid,
+      dsnpMultiHash,
+      mimeType: file.mimetype,
+      createdOn: Date.now(),
+      type: AttachmentType.PARQUET,
+    };
+
+    metadataTransaction.setex(
+      getAssetMetadataKey(ipfsCid),
+      STORAGE_EXPIRE_UPPER_LIMIT_SECONDS,
+      JSON.stringify(assetCache),
+    );
+
+    // Execute Redis transactions
+    const dataOps = await dataTransaction.exec();
+    ApiService.checkTransactionResult(dataOps);
+    const metaDataOps = await metadataTransaction.exec();
+    ApiService.checkTransactionResult(metaDataOps);
+
+    // Create and enqueue the batch job
+    const data = {
+      id: ipfsCid,
+      schemaId,
+      cid: ipfsCid,
+    };
+
+    const job = await this.batchAnnouncerQueue.add(`Batch Request Job - ${data.id}`, data, {
+      jobId: data.id,
+      attempts: 3,
+      delay: 3000,
+      removeOnFail: false,
+      removeOnComplete: 2000,
+    });
+
+    this.logger.debug(`Enqueued Batch Request Job: ${job.id}`);
+    return { referenceId: data.id };
+  }
+
   async validateAssetsAndFetchMetadata(
     content: AssetIncludedRequestDto,
   ): Promise<IRequestJob['assetToMimeType'] | undefined> {
