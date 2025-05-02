@@ -541,6 +541,54 @@
           "dev"
         ]
       }
+    },
+    "/v3/content/batchAnnouncement": {
+      "put": {
+        "operationId": "ContentControllerV3_putBatches",
+        "summary": "Create off-chain batch content announcements with direct Parquet file uploads",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  },
+                  "schemaIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "required": ["files", "schemaIds"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnouncementResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "v3/content"
+        ]
+      }
     }
   },
   "info": {
